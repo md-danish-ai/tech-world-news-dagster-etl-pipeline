@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+build/
+dist/
+*.egg-info/
+
+# Databases & Runtime Persistent Storage
+data/*.sqlite
+data/*.sqlite-journal
+data/*.duckdb
+data/*.duckdb.wal
+
+# OS / Editor
+.DS_Store
+.idea/
+.vscode/
+.env

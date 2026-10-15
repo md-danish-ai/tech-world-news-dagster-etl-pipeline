@@ -1,0 +1,13 @@
+# Dagster Core & Web UI
+dagster
+dagster-webserver
+
+# Embedded Analytics & Data Warehouse (DuckDB)
+dagster-duckdb
+dagster-duckdb-pandas
+duckdb
+
+# Data Processing & Utilities
+pandas
+requests
+sqlalchemy
