@@ -7,7 +7,7 @@ services:
     container_name: twn-dagster
     restart: unless-stopped
     ports:
-      - "4000:4000"
+      - "6500:4000"
     environment:
       - DAGSTER_HOME=/opt/dagster/dagster_home
       - DATA_DIR=/opt/dagster/data
@@ -15,6 +15,7 @@ services:
     volumes:
       - twn_db_data:/opt/dagster/data
       - twn_dagster_home:/opt/dagster/dagster_home
+      - ./dagster_home/dagster.yaml:/opt/dagster/dagster_home/dagster.yaml
       - .:/opt/dagster/app
     depends_on:
       - sqlite-db

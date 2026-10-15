@@ -10,7 +10,7 @@ Everything is containerized using **Docker Compose** with dedicated database ser
 
 ```mermaid
 graph TD
-    API["🌐 Hacker News REST API"] -->|Ingest| DAGSTER["⚙️ Dagster ETL Engine<br/>(twn-dagster :4000)"]
+    API["🌐 Hacker News REST API"] -->|Ingest| DAGSTER["⚙️ Dagster ETL Engine<br/>(twn-dagster :6500)"]
     SQLITE_DB[("🗄️ SQLite Source DB<br/>(twn-sqlite :8085)")] -->|Extract| DAGSTER
     DAGSTER -->|Transform & Deduplicate| DUCK_DB[("🦆 DuckDB Warehouse<br/>(twn-duckdb :8086)")]
     
@@ -34,7 +34,7 @@ graph TD
   - `twn-dagster`: Dagster Webserver and daemon orchestrator.
   - `twn-sqlite`: SQLite engine with web management interface.
   - `twn-duckdb`: DuckDB analytical database engine.
-- **Custom Non-Default Ports**: Configured with custom ports (`4000`, `8085`, `8086`) so it never clashes with existing local services.
+- **Custom Non-Default Ports**: Configured with custom ports (`6500`, `8085`, `8086`) so it never clashes with existing local services.
 - **Full Data Persistence**: Named volumes (`twn_db_data` and `twn_dagster_home`) guarantee that all database records, run histories, and schedules persist across restarts and rebuilds.
 - **Live Code Mount**: Edit pipeline definitions locally, and changes reload instantly without rebuilding containers.
 
@@ -46,7 +46,7 @@ Once your containers are running, access the web services in your browser:
 
 | Service | Container Name | URL / Port | Description |
 | :--- | :--- | :--- | :--- |
-| **Dagster Web UI** | `twn-dagster` | [http://localhost:4000](http://localhost:4000) | Pipeline graph, asset catalog, runs, and schedule monitoring |
+| **Dagster Web UI** | `twn-dagster` | [http://localhost:6500](http://localhost:6500) | Pipeline graph, asset catalog, runs, and schedule monitoring |
 | **SQLite Web GUI** | `twn-sqlite` | [http://localhost:8085](http://localhost:8085) | Visual table browser and SQL query runner for SQLite |
 | **DuckDB Service** | `twn-duckdb` | `localhost:8086` | Dedicated DuckDB analytical warehouse environment |
 
@@ -69,7 +69,7 @@ docker compose up -d --build
 docker compose ps
 ```
 
-Open **[http://localhost:4000](http://localhost:4000)** in your browser to access the Dagster UI.
+Open **[http://localhost:6500](http://localhost:6500)** in your browser to access the Dagster UI.
 
 ---
 
@@ -184,8 +184,8 @@ Data persistence is managed via two Docker named volumes:
 
 ## 💡 Troubleshooting & FAQ
 
-- **Port Conflict on 4000, 8085, or 8086?**
-  - Change the host port mapping in [docker-compose.yml](file:///Users/mohammeddanish/Project/tech-world-news-dagster-etl-pipeline/docker-compose.yml) (e.g., `"4001:4000"` or `"8087:8085"`).
+- **Port Conflict on 6500, 8085, or 8086?**
+  - Change the host port mapping in [docker-compose.yml](file:///Users/mohammeddanish/Project/tech-world-news-dagster-etl-pipeline/docker-compose.yml) (e.g., `"6501:4000"` or `"8087:8085"`).
 - **How to completely wipe all database records and start fresh?**
   - Run `docker compose down -v` followed by `docker compose up -d --build`.
 - **Can I inspect database files on my host machine?**
