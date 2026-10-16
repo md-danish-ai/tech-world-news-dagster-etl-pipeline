@@ -1,24 +1,19 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-.venv/
-build/
-dist/
-*.egg-info/
+# Virtual Environment
+*venv/
+dagster_etl_venv/
 
-# Databases & Runtime Persistent Storage
-data/*.sqlite
-data/*.sqlite-journal
-data/*.duckdb
-data/*.duckdb.wal
+# Medallion Data Storage (Keep folders, ignore downloaded files)
+data/bronze/*
+data/silver/*
+data/gold/*
+!data/**/.gitkeep
 
-# OS / Editor
-.DS_Store
-.idea/
-.vscode/
-.env
+# Databases & Runtime Storage
+*.sqlite
+*.sqlite-journal
+*.duckdb
+*.duckdb.wal
+
+# Dagster local storage
+.dagster/
+dagster_home/storage/

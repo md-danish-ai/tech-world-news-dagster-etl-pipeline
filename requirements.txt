@@ -2,12 +2,14 @@
 dagster
 dagster-webserver
 
-# Embedded Analytics & Data Warehouse (DuckDB)
+# Embedded Analytics & Data Warehouse (DuckDB & SQLite)
 dagster-duckdb
 dagster-duckdb-pandas
 duckdb
-
-# Data Processing & Utilities
-pandas
-requests
 sqlalchemy
+
+# Data Processing, Schema Validation & Utilities
+pandas
+pyarrow
+pydantic>=2.0.0
+requests
