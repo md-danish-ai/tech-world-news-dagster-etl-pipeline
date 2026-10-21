@@ -1,0 +1,15 @@
+# Dagster Core & Web UI
+dagster
+dagster-webserver
+
+# Embedded Analytics & Data Warehouse (DuckDB & SQLite)
+dagster-duckdb
+dagster-duckdb-pandas
+duckdb
+sqlalchemy
+
+# Data Processing, Schema Validation & Utilities
+pandas
+pyarrow
+pydantic>=2.0.0
+requests

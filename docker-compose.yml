@@ -1,0 +1,59 @@
+services:
+  dagster-etl:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: twn-dagster:latest
+    container_name: twn-dagster
+    restart: unless-stopped
+    ports:
+      - "6500:4000"
+    environment:
+      - DAGSTER_HOME=/opt/dagster/dagster_home
+      - DATA_DIR=/opt/dagster/data
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - twn_db_data:/opt/dagster/data
+      - twn_dagster_home:/opt/dagster/dagster_home
+      - ./dagster_home/dagster.yaml:/opt/dagster/dagster_home/dagster.yaml
+      - .:/opt/dagster/app
+    depends_on:
+      - sqlite-db
+      - duckdb
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/server_info"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  sqlite-db:
+    image: python:3.10-slim
+    container_name: twn-sqlite
+    restart: unless-stopped
+    ports:
+      - "8085:8085"
+    volumes:
+      - twn_db_data:/data
+    command: >
+      sh -c "pip install --no-cache-dir sqlite-web &&
+             mkdir -p /data &&
+             touch /data/hackernews.sqlite &&
+             sqlite_web -H 0.0.0.0 -p 8085 -x /data/hackernews.sqlite"
+
+  duckdb:
+    image: duckdb/duckdb:latest
+    container_name: twn-duckdb
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+    ports:
+      - "8086:8086"
+    volumes:
+      - twn_db_data:/workspace
+
+volumes:
+  twn_db_data:
+    name: twn_db_data
+  twn_dagster_home:
+    name: twn_dagster_home

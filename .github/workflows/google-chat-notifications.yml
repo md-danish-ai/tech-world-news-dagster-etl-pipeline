@@ -1,0 +1,40 @@
+name: Google Chat Notifications
+
+on:
+  # 1. Direct pushes to any branch
+  push:
+    branches:
+      - '**'
+
+  # 2. Pull Request events (opened, reopened, closed/merged)
+  pull_request:
+    types: [opened, reopened, closed]
+
+  # 3. Pull Request reviews (approvals, changes requested)
+  pull_request_review:
+    types: [submitted]
+
+# Ensure we don't block concurrent notifications
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}-${{ github.event.action }}
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    name: Notify Google Chat
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Run Google Chat Notification Script
+        env:
+          GOOGLE_CHAT_WEBHOOK_URL: ${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}
+        run: |
+          python .github/scripts/notify_google_chat.py

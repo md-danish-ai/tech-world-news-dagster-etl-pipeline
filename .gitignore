@@ -1,0 +1,38 @@
+# Virtual Environment
+*venv/
+dagster_etl_venv/
+
+# Medallion Data Storage (Keep folders, ignore downloaded files)
+data/bronze/*
+data/silver/*
+data/gold/*
+!data/**/.gitkeep
+
+# Databases & Runtime Storage
+*.sqlite
+*.sqlite-journal
+*.duckdb
+*.duckdb.wal
+
+# Dagster local storage
+.dagster/
+dagster_home/storage/
+
+# Dagster temporary directories
+.tmp_dagster_home*
+.dagster/
+dagster_home/storage/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local Data files
+data/*.csv
+data/*.sqlite*
+data/*.duckdb*
+data/bronze/*
+data/silver/*
+data/gold/*
+!data/**/.gitkeep
