@@ -17,3 +17,22 @@ data/gold/*
 # Dagster local storage
 .dagster/
 dagster_home/storage/
+
+# Dagster temporary directories
+.tmp_dagster_home*
+.dagster/
+dagster_home/storage/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local Data files
+data/*.csv
+data/*.sqlite*
+data/*.duckdb*
+data/bronze/*
+data/silver/*
+data/gold/*
+!data/**/.gitkeep
