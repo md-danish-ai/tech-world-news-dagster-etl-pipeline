@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util import Retry
+from requests.adapters import HTTPAdapter, Retry
 from dagster import ConfigurableResource
 
 # Defines the HackerNewsResource class as a Dagster ConfigurableResource.

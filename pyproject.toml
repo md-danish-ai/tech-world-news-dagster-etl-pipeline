@@ -1,2 +1,10 @@
 [tool.dagster]
 module_name = "definitions"
+
+[tool.pyrefly]
+search-path = ["."]
+python-interpreter-path = ".venv/bin/python"
+
+[tool.pyright]
+extraPaths = ["."]
+
