@@ -104,7 +104,7 @@ def silver_common_table(context: AssetExecutionContext, raw_top_stories: Optiona
     df["cleaned_tokens"] = df["title_cleaned"].apply(tokenize_and_filter_stopwords)
 
     # ---------------------------------------------------------
-    # STEP 5: Pydantic Data Quality Validation & Deduplication
+    # STEP 5: Pydantic Schema Validation & Save to SQLite
     # ---------------------------------------------------------
     os.makedirs(os.path.dirname(silver_db_path), exist_ok=True)
 
@@ -130,7 +130,7 @@ def silver_common_table(context: AssetExecutionContext, raw_top_stories: Optiona
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_silver_title_hash ON silver_common_table(title_hash);")
 
-        # 5.2 Fetch existing title hashes to avoid re-inserting stories with identical titles
+        # 5.2 Fetch existing title hashes to avoid re-inserting stories with different IDs but identical titles
         existing_hash_rows = cursor.execute("SELECT title_hash, story_id FROM silver_common_table;").fetchall()
         existing_hash_map = {row[0]: row[1] for row in existing_hash_rows}
 
@@ -141,7 +141,6 @@ def silver_common_table(context: AssetExecutionContext, raw_top_stories: Optiona
             t_hash = row["title_hash"]
             s_id = row["story_id"]
 
-            # Skip if identical title exists under a different ID
             if t_hash in existing_hash_map and existing_hash_map[t_hash] != s_id:
                 skipped_duplicate_titles += 1
                 continue
@@ -156,7 +155,7 @@ def silver_common_table(context: AssetExecutionContext, raw_top_stories: Optiona
         if skipped_duplicate_titles > 0:
             context.log.info(f"Skipped {skipped_duplicate_titles} stories with duplicate titles already in silver table.")
 
-        # 5.3 Upsert into silver_common_table (Insert new or Update existing story_id)
+        # 5.3 Upsert into silver_common_table (Insert new, or Update score/timestamps for existing story_id)
         upsert_query = """
             INSERT INTO silver_common_table (
                 story_id, title, title_hash, title_cleaned, cleaned_tokens,
@@ -184,7 +183,7 @@ def silver_common_table(context: AssetExecutionContext, raw_top_stories: Optiona
         total_silver_in_db = cursor.execute("SELECT COUNT(*) FROM silver_common_table;").fetchone()[0]
 
     context.log.info(
-        f"Saved {len(valid_records)} validated records into 'silver_common_table'. Total in silver table: {total_silver_in_db}."
+        f"Saved {len(valid_records)} records into 'silver_common_table' in {silver_db_path}. Total in silver table: {total_silver_in_db}."
     )
 
     # ---------------------------------------------------------
