@@ -1,51 +1,23 @@
-import hashlib
-import json
 import os
-import re
 import sqlite3
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 import pandas as pd
 from dagster import asset, AssetExecutionContext, MetadataValue, RetryPolicy
 
-# Standard Stopwords to filter out non-informative words from technology headlines
-STOPWORDS = {
-    "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of",
-    "with", "by", "from", "up", "about", "into", "over", "after", "is", "are",
-    "was", "were", "be", "been", "being", "have", "has", "had", "do", "does",
-    "did", "will", "would", "shall", "should", "may", "might", "must", "can",
-    "could", "it", "its", "this", "that", "these", "those", "i", "you", "he",
-    "she", "we", "they", "what", "which", "who", "whom", "how", "when", "where",
-    "why", "as", "if", "not", "no", "all", "any", "some", "more", "most", "other",
-    "so", "than", "too", "very", "s", "t", "just", "don", "now", "hn", "show", "ask"
-}
-
-
-def clean_title_text(title: str) -> str:
-    """Converts title to lowercase, removes punctuation/symbols, and collapses whitespace."""
-    if not title or pd.isna(title):
-        return ""
-    text = str(title).lower()
-    # Strip URL links if present
-    text = re.sub(r"https?://\S+|www\.\S+", "", text)
-    # Strip punctuation and special characters (keep only alphanumeric and whitespace)
-    text = re.sub(r"[^a-z0-9\s]", " ", text)
-    # Collapse multiple whitespaces
-    return re.sub(r"\s+", " ", text).strip()
-
-
-def tokenize_and_filter_stopwords(cleaned_text: str) -> str:
-    """Extracts meaningful words excluding stopwords and serializes to a JSON string."""
-    if not cleaned_text:
-        return json.dumps([])
-    words = cleaned_text.split()
-    meaningful_tokens = [w for w in words if len(w) > 1 and w not in STOPWORDS]
-    return json.dumps(meaningful_tokens)
+# Import reusable helpers and Pydantic validation model
+from src.utils.helpers import (
+    clean_title_text,
+    tokenize_and_filter_stopwords,
+    compute_sha256,
+    format_epoch_to_ist,
+)
+from src.utils.models import HNStoryCleaned
 
 
 @asset(
     group_name="silver",
-    description="Standardizes, hashes (SHA-256), deduplicates, cleans titles, and saves stories to data/silver/hackernews_silver.sqlite",
+    description="Standardizes, hashes (SHA-256), deduplicates, cleans titles, validates schemas, and saves to data/silver/hackernews_silver.sqlite",
     retry_policy=RetryPolicy(max_retries=2, delay=30),
 )
 def silver_common_table(context: AssetExecutionContext, raw_top_stories: Optional[pd.DataFrame] = None) -> pd.DataFrame:
@@ -85,16 +57,6 @@ def silver_common_table(context: AssetExecutionContext, raw_top_stories: Optiona
     df = df.rename(columns=rename_mapping)
 
     # 2.2 Convert UNIX epoch 'time' to human-readable IST timestamp
-    IST = timezone(timedelta(hours=5, minutes=30))
-
-    def format_epoch_to_ist(epoch_val) -> Optional[str]:
-        if pd.isna(epoch_val) or epoch_val is None:
-            return None
-        try:
-            return datetime.fromtimestamp(int(epoch_val), tz=IST).strftime("%Y-%m-%d %H:%M:%S IST")
-        except Exception:
-            return None
-
     if "time" in df.columns:
         df["published_at"] = df["time"].apply(format_epoch_to_ist)
     else:
@@ -117,6 +79,7 @@ def silver_common_table(context: AssetExecutionContext, raw_top_stories: Optiona
         df["author"] = df["author"].fillna("unknown")
 
     # 2.4 Add Audit & Lineage Metadata
+    IST = timezone(timedelta(hours=5, minutes=30))
     now_ist = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST")
     df["transfer_timestamp"] = now_ist
     df["dagster_run_id"] = context.run_id
@@ -125,15 +88,9 @@ def silver_common_table(context: AssetExecutionContext, raw_top_stories: Optiona
     # ---------------------------------------------------------
     # STEP 3: SHA-256 Title Hashing & Deduplication
     # ---------------------------------------------------------
-    # 3.1 Compute SHA-256 hash for each story title
-    def compute_sha256(text: str) -> str:
-        if not text or pd.isna(text):
-            return ""
-        return hashlib.sha256(str(text).strip().encode("utf-8")).hexdigest()
-
     df["title_hash"] = df["title"].apply(compute_sha256)
 
-    # 3.2 In-batch deduplication (keep first occurrence in the incoming batch)
+    # In-batch deduplication (keep first occurrence in incoming batch)
     records_before_batch_dedup = len(df)
     df = df.drop_duplicates(subset=["title_hash"], keep="first")
     batch_duplicates_dropped = records_before_batch_dedup - len(df)
@@ -147,7 +104,7 @@ def silver_common_table(context: AssetExecutionContext, raw_top_stories: Optiona
     df["cleaned_tokens"] = df["title_cleaned"].apply(tokenize_and_filter_stopwords)
 
     # ---------------------------------------------------------
-    # STEP 5: Save to data/silver/hackernews_silver.sqlite
+    # STEP 5: Pydantic Data Quality Validation & Deduplication
     # ---------------------------------------------------------
     os.makedirs(os.path.dirname(silver_db_path), exist_ok=True)
 
@@ -173,7 +130,7 @@ def silver_common_table(context: AssetExecutionContext, raw_top_stories: Optiona
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_silver_title_hash ON silver_common_table(title_hash);")
 
-        # 5.2 Fetch existing title hashes to avoid re-inserting stories with different IDs but identical titles
+        # 5.2 Fetch existing title hashes to avoid re-inserting stories with identical titles
         existing_hash_rows = cursor.execute("SELECT title_hash, story_id FROM silver_common_table;").fetchall()
         existing_hash_map = {row[0]: row[1] for row in existing_hash_rows}
 
@@ -183,15 +140,23 @@ def silver_common_table(context: AssetExecutionContext, raw_top_stories: Optiona
         for row in df.to_dict(orient="records"):
             t_hash = row["title_hash"]
             s_id = row["story_id"]
+
+            # Skip if identical title exists under a different ID
             if t_hash in existing_hash_map and existing_hash_map[t_hash] != s_id:
                 skipped_duplicate_titles += 1
                 continue
-            valid_records.append(row)
+
+            # Validate schema and types using Pydantic model
+            try:
+                validated_story = HNStoryCleaned.model_validate(row)
+                valid_records.append(validated_story.model_dump())
+            except Exception as e:
+                context.log.warning(f"Skipping malformed row story_id={s_id}: {e}")
 
         if skipped_duplicate_titles > 0:
             context.log.info(f"Skipped {skipped_duplicate_titles} stories with duplicate titles already in silver table.")
 
-        # 5.3 Upsert into silver_common_table (Insert new, or Update score/timestamps for existing story_id)
+        # 5.3 Upsert into silver_common_table (Insert new or Update existing story_id)
         upsert_query = """
             INSERT INTO silver_common_table (
                 story_id, title, title_hash, title_cleaned, cleaned_tokens,
@@ -219,11 +184,11 @@ def silver_common_table(context: AssetExecutionContext, raw_top_stories: Optiona
         total_silver_in_db = cursor.execute("SELECT COUNT(*) FROM silver_common_table;").fetchone()[0]
 
     context.log.info(
-        f"Saved {len(valid_records)} records into 'silver_common_table' in {silver_db_path}. Total in silver table: {total_silver_in_db}."
+        f"Saved {len(valid_records)} validated records into 'silver_common_table'. Total in silver table: {total_silver_in_db}."
     )
 
     # ---------------------------------------------------------
-    # Metadata & Observability for Dagster UI
+    # STEP 6: Metadata & Observability for Dagster UI
     # ---------------------------------------------------------
     preview_df = pd.DataFrame(valid_records)
     preview_cols = [c for c in ["story_id", "title", "title_cleaned", "cleaned_tokens", "score", "published_at"] if c in preview_df.columns]
