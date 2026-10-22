@@ -55,7 +55,7 @@ def send_google_chat_message(webhook_url: str, text: str) -> bool:
 def build_message(event_name: str, event: Dict[str, Any]) -> Optional[str]:
     """Build the notification message depending on the GitHub event."""
     repo = event.get("repository", {})
-    repo_name = repo.get("full_name") or repo.get("name", "Repository")
+    repo_name = repo.get("name") or repo.get("full_name", "Repository")
     repo_url = repo.get("html_url", "")
     repo_link = f"<{repo_url}|{escape_chat(repo_name)}>" if repo_url else f"*{escape_chat(repo_name)}*"
 
@@ -95,39 +95,20 @@ def build_message(event_name: str, event: Dict[str, Any]) -> Optional[str]:
         lines = [
             header,
             f"• *Pushed by:* `{escape_chat(pusher)}`",
-            f"• *Commits:* {commit_count} commit{'s' if commit_count != 1 else ''}",
         ]
 
-        # Display commit details (up to 5 commits)
-        if commits:
-            commit_lines = []
-            for commit in commits[:5]:
-                sha = commit.get("id", "")[:7]
-                raw_msg = commit.get("message", "").split("\n")[0].strip()
-                msg = escape_chat(raw_msg)
-                author = commit.get("author", {}).get("name") or commit.get("author", {}).get("username", "")
-                url = commit.get("url", "")
-
-                commit_display = f"<{url}|`{sha}`>" if url else f"`{sha}`"
-                author_display = f" - _{escape_chat(author)}_" if author else ""
-                commit_lines.append(f"  • {commit_display} {msg}{author_display}")
-
-            lines.append("• *Commit summary:*")
-            lines.extend(commit_lines)
-
-            if commit_count > 5:
-                extra = commit_count - 5
-                lines.append(f"  _...and {extra} more commit{'s' if extra != 1 else ''}_")
-        elif event.get("head_commit"):
-            head_commit = event["head_commit"]
-            sha = head_commit.get("id", "")[:7]
-            raw_msg = head_commit.get("message", "").split("\n")[0].strip()
+        # Display only the latest commit for this push
+        latest_commit = event.get("head_commit") or (commits[-1] if commits else None)
+        if latest_commit:
+            sha = latest_commit.get("id", "")[:7]
+            raw_msg = latest_commit.get("message", "").split("\n")[0].strip()
             msg = escape_chat(raw_msg)
-            author = head_commit.get("author", {}).get("name") or head_commit.get("author", {}).get("username", "")
-            url = head_commit.get("url", "")
+            author = latest_commit.get("author", {}).get("name") or latest_commit.get("author", {}).get("username", "")
+            url = latest_commit.get("url", "")
+
             commit_display = f"<{url}|`{sha}`>" if url else f"`{sha}`"
             author_display = f" - _{escape_chat(author)}_" if author else ""
-            lines.append(f"• *Head commit:* {commit_display} {msg}{author_display}")
+            lines.append(f"• *Latest commit:* {commit_display} {msg}{author_display}")
 
         if compare_url:
             lines.append(f"• <{compare_url}|View Changes on GitHub>")
