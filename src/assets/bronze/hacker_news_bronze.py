@@ -39,10 +39,9 @@ def raw_top_stories(context: AssetExecutionContext, hn_api: HackerNewsResource) 
     if "kids" in df.columns:
         df["kids"] = df["kids"].apply(lambda k: json.dumps(k) if isinstance(k, list) else None)
 
-    # 6. Save to local SQLite storage
-    os.makedirs("data", exist_ok=True)
-    #  Save the bronze database inside data/bronze/
-    db_path = os.path.join("data", "bronze", "bronze_hackernews.sqlite")
+    # 6. Save to local SQLite storage in bronze layer folder
+    db_path = os.path.join("data", "bronze", "hackernews_bronze.sqlite")
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
     with sqlite3.connect(db_path) as conn:
         df.to_sql("bronze_raw_stories", con=conn, if_exists="append", index=False)
