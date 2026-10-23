@@ -16,3 +16,11 @@ class HNStoryCleaned(BaseModel):
     source: str = "hn_api"
     transfer_timestamp: str
     dagster_run_id: str
+
+class HNBuzzwordRanked(BaseModel):
+    """Pydantic model enforcing schema for Gold Top 20 Buzzwords."""
+    rank: int
+    keyword: str
+    mention_count: int
+    computed_at: str
+    dagster_run_id: str
