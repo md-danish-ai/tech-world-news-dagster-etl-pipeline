@@ -58,3 +58,15 @@ def format_epoch_to_ist(epoch_val) -> Optional[str]:
         return datetime.fromtimestamp(int(epoch_val), tz=IST).strftime("%Y-%m-%d %H:%M:%S IST")
     except Exception:
         return None
+
+
+def parse_tokens(val) -> list:
+    """Safely parses JSON string or list of tokens from SQLite."""
+    if isinstance(val, list):
+        return val
+    if isinstance(val, str) and val.strip():
+        try:
+            return json.loads(val)
+        except Exception:
+            return []
+    return []
