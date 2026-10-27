@@ -52,6 +52,26 @@ services:
     volumes:
       - twn_db_data:/workspace
 
+  streamlit-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: twn-dagster:latest
+    container_name: twn-streamlit
+    restart: unless-stopped
+    ports:
+      - "8502:8502"
+    environment:
+      - DATA_DIR=/opt/dagster/data
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - twn_db_data:/opt/dagster/data
+      - .:/opt/dagster/app
+    command: ["streamlit", "run", "streamlit_app.py", "--server.port=8502", "--server.address=0.0.0.0"]
+    depends_on:
+      - dagster-etl
+
+
 volumes:
   twn_db_data:
     name: twn_db_data

@@ -186,7 +186,7 @@ def build_message(event_name: str, event: Dict[str, Any]) -> Optional[str]:
                 f"• *Approved by:* `{escape_chat(reviewer)}`",
                 f"• *PR Author:* `{escape_chat(pr_author)}`",
             ]
-            review_body = review.get("body", "").strip()
+            review_body = (review.get("body") or "").strip()
             if review_body:
                 # Truncate comment if very long
                 comment_preview = review_body if len(review_body) <= 150 else review_body[:147] + "..."
