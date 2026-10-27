@@ -13,3 +13,8 @@ pandas
 pyarrow
 pydantic>=2.0.0
 requests
+
+# Interactive Dashboard & Visualizations
+streamlit>=1.30.0
+altair>=5.0.0
+

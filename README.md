@@ -9,8 +9,10 @@ A Data Engineering pipeline orchestrated with **Dagster**, using **DuckDB** for 
 | Service | URL | Description |
 | :--- | :--- | :--- |
 | **Dagster UI** | [http://localhost:6500](http://localhost:6500) | Pipeline orchestration, asset catalog & runs |
+| **Streamlit Dashboard** | [http://localhost:8502](http://localhost:8502) | Real-time analytics, trending stories & buzzwords |
 | **SQLite Web UI** | [http://localhost:8085](http://localhost:8085) | SQLite database browser |
 | **DuckDB** | `localhost:8086` | Analytical warehouse container |
+
 
 ---
 
