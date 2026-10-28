@@ -1,15 +1,31 @@
-import json
 import os
+import json
+import time
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 import duckdb
 import pandas as pd
-from dagster import asset, AssetExecutionContext, MetadataValue
-
-from src.utils.helpers import parse_tokens, IST
+from dagster import asset, AssetExecutionContext, MetadataValue  
+from src.assets.silver.hacker_news_silver import silver_common_table
+from src.utils.helpers import IST, parse_tokens
 from src.utils.models import HNBuzzwordRanked, HNTrendingStoryRanked
 
+def _connect_duckdb_with_retry(db_path: str, context: AssetExecutionContext, max_attempts: int = 5) -> duckdb.DuckDBPyConnection:
+    """Safely connects to DuckDB with retry handling in case of lingering file locks."""
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    for attempt in range(max_attempts):
+        try:
+            return duckdb.connect(db_path)
+        except Exception as e:
+            if "Could not set lock" in str(e) and attempt < max_attempts - 1:
+                context.log.warning(
+                    f"DuckDB database locked by another process. Retrying in 2 seconds... (Attempt {attempt + 1}/{max_attempts})"
+                )
+                time.sleep(2)
+            else:
+                raise e
 
 def write_refresh_signal(run_id: str, asset_name: str) -> None:
     """Writes a lightweight refresh signal file indicating Gold layer materialization for dashboard auto-refresh."""
@@ -114,6 +130,8 @@ def top_trending_topics(context: AssetExecutionContext, silver_common_table: Opt
 
 @asset(
     group_name="gold",
+    # This guarantees Dagster runs them one-by-one so DuckDB never locks!
+    deps=[silver_common_table, top_trending_topics],
     description="Ranks Hacker News stories by upvote score with standardized timestamps for day/week/month analytical filtering in DuckDB.",
 )
 def trending_stories_by_score(context: AssetExecutionContext, silver_common_table: Optional[pd.DataFrame] = None) -> pd.DataFrame:
@@ -185,7 +203,7 @@ def trending_stories_by_score(context: AssetExecutionContext, silver_common_tabl
     # 5. Save to DuckDB: data/gold/gold_analytics.duckdb
     # ---------------------------------------------------------
     os.makedirs(os.path.dirname(gold_db_path), exist_ok=True)
-    with duckdb.connect(gold_db_path) as conn:
+    with _connect_duckdb_with_retry(gold_db_path, context) as conn:
         conn.execute("CREATE OR REPLACE TABLE trending_stories_by_score AS SELECT * FROM gold_df")
 
     context.log.info(f"Saved {len(gold_df)} trending stories into DuckDB table 'trending_stories_by_score'.")

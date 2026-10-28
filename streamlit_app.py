@@ -6,6 +6,8 @@ import altair as alt
 import duckdb
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
+
 
 # -----------------------------------------------------------------------------
 # 1. Page Configuration & Custom CSS
@@ -16,6 +18,18 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+# Automatically refreshes the browser page every 10 minutes (600,000 ms)
+components.html(
+    """
+    <script>
+        setTimeout(function(){
+            window.parent.location.reload();
+        }, 300000);
+    </script>
+    """,
+    height=0,
+)
+
 
 st.markdown(
     """
@@ -54,7 +68,7 @@ def get_refresh_signal():
     return None
 
 
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=300)
 def load_duckdb_data():
     """Loads tables from DuckDB with error resilience."""
     if not os.path.exists(DUCKDB_PATH):
