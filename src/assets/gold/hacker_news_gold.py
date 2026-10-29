@@ -50,19 +50,17 @@ def top_trending_topics(context: AssetExecutionContext, silver_common_table: Opt
     silver_db_path = os.path.join("data", "silver", "hackernews_silver.sqlite")
     gold_db_path = os.path.join("data", "gold", "gold_analytics.duckdb")
 
-    # 1. Fallback: Load from Silver database if DataFrame is not in memory
-    if silver_common_table is None or silver_common_table.empty:
-        if os.path.exists(silver_db_path):
-            context.log.info(f"Loading cleaned stories from Silver database: {silver_db_path}")
-            with sqlite3.connect(silver_db_path) as conn:
-                silver_common_table = pd.read_sql("SELECT * FROM silver_common_table", conn)
-        else:
-            raise ValueError(f"Silver database not found at {silver_db_path}!")
+    # 1. Always load the full cumulative dataset from the Silver database
+    # to compute true keyword trends across all historical stories, not just the latest run batch.
+    if not os.path.exists(silver_db_path):
+        raise ValueError(f"Silver database not found at {silver_db_path}!")
 
-    total_stories = len(silver_common_table)
-    context.log.info(f"Analyzing keywords across {total_stories} stories from Silver layer...")
+    context.log.info(f"Loading all cumulative stories from Silver database: {silver_db_path}")
+    with sqlite3.connect(silver_db_path) as conn:
+        df = pd.read_sql("SELECT * FROM silver_common_table", conn)
 
-    df = silver_common_table.copy()
+    total_stories = len(df)
+    context.log.info(f"Analyzing keywords across all {total_stories} cumulative stories from Silver layer...")
 
     # 2. Unpack tokens using helper
     words_series = df["cleaned_tokens"].apply(parse_tokens).explode()
@@ -101,7 +99,7 @@ def top_trending_topics(context: AssetExecutionContext, silver_common_table: Opt
     # 5. Save to DuckDB: data/gold/gold_analytics.duckdb
     # ---------------------------------------------------------
     os.makedirs(os.path.dirname(gold_db_path), exist_ok=True)
-    with duckdb.connect(gold_db_path) as conn:
+    with _connect_duckdb_with_retry(gold_db_path, context) as conn:
         conn.execute("CREATE OR REPLACE TABLE top_trending_topics AS SELECT * FROM gold_df")
 
     context.log.info(f"Saved Top {len(gold_df)} buzzwords into DuckDB: {gold_db_path} ('top_trending_topics').")
@@ -138,19 +136,17 @@ def trending_stories_by_score(context: AssetExecutionContext, silver_common_tabl
     silver_db_path = os.path.join("data", "silver", "hackernews_silver.sqlite")
     gold_db_path = os.path.join("data", "gold", "gold_analytics.duckdb")
 
-    # 1. Fallback: Load from Silver database if DataFrame is not in memory
-    if silver_common_table is None or silver_common_table.empty:
-        if os.path.exists(silver_db_path):
-            context.log.info(f"Loading cleaned stories from Silver database: {silver_db_path}")
-            with sqlite3.connect(silver_db_path) as conn:
-                silver_common_table = pd.read_sql("SELECT * FROM silver_common_table", conn)
-        else:
-            raise ValueError(f"Silver database not found at {silver_db_path}!")
+    # 1. Always load the full cumulative dataset from the Silver database
+    # to rank all historical stories across the entire database, not just the latest run batch.
+    if not os.path.exists(silver_db_path):
+        raise ValueError(f"Silver database not found at {silver_db_path}!")
 
-    total_stories = len(silver_common_table)
-    context.log.info(f"Processing and ranking {total_stories} stories by score...")
+    context.log.info(f"Loading all cumulative stories from Silver database: {silver_db_path}")
+    with sqlite3.connect(silver_db_path) as conn:
+        df = pd.read_sql("SELECT * FROM silver_common_table", conn)
 
-    df = silver_common_table.copy()
+    total_stories = len(df)
+    context.log.info(f"Processing and ranking all {total_stories} cumulative stories by score...")
     if df.empty:
         context.log.warning("No stories available from Silver layer to rank!")
         return pd.DataFrame()
