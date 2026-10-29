@@ -1,15 +1,31 @@
-import json
 import os
+import json
+import time
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 import duckdb
 import pandas as pd
-from dagster import asset, AssetExecutionContext, MetadataValue
-
-from src.utils.helpers import parse_tokens, IST
+from dagster import asset, AssetExecutionContext, MetadataValue  
+from src.assets.silver.hacker_news_silver import silver_common_table
+from src.utils.helpers import IST, parse_tokens
 from src.utils.models import HNBuzzwordRanked, HNTrendingStoryRanked
 
+def _connect_duckdb_with_retry(db_path: str, context: AssetExecutionContext, max_attempts: int = 5) -> duckdb.DuckDBPyConnection:
+    """Safely connects to DuckDB with retry handling in case of lingering file locks."""
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    for attempt in range(max_attempts):
+        try:
+            return duckdb.connect(db_path)
+        except Exception as e:
+            if "Could not set lock" in str(e) and attempt < max_attempts - 1:
+                context.log.warning(
+                    f"DuckDB database locked by another process. Retrying in 2 seconds... (Attempt {attempt + 1}/{max_attempts})"
+                )
+                time.sleep(2)
+            else:
+                raise e
 
 def write_refresh_signal(run_id: str, asset_name: str) -> None:
     """Writes a lightweight refresh signal file indicating Gold layer materialization for dashboard auto-refresh."""
@@ -34,19 +50,17 @@ def top_trending_topics(context: AssetExecutionContext, silver_common_table: Opt
     silver_db_path = os.path.join("data", "silver", "hackernews_silver.sqlite")
     gold_db_path = os.path.join("data", "gold", "gold_analytics.duckdb")
 
-    # 1. Fallback: Load from Silver database if DataFrame is not in memory
-    if silver_common_table is None or silver_common_table.empty:
-        if os.path.exists(silver_db_path):
-            context.log.info(f"Loading cleaned stories from Silver database: {silver_db_path}")
-            with sqlite3.connect(silver_db_path) as conn:
-                silver_common_table = pd.read_sql("SELECT * FROM silver_common_table", conn)
-        else:
-            raise ValueError(f"Silver database not found at {silver_db_path}!")
+    # 1. Always load the full cumulative dataset from the Silver database
+    # to compute true keyword trends across all historical stories, not just the latest run batch.
+    if not os.path.exists(silver_db_path):
+        raise ValueError(f"Silver database not found at {silver_db_path}!")
 
-    total_stories = len(silver_common_table)
-    context.log.info(f"Analyzing keywords across {total_stories} stories from Silver layer...")
+    context.log.info(f"Loading all cumulative stories from Silver database: {silver_db_path}")
+    with sqlite3.connect(silver_db_path) as conn:
+        df = pd.read_sql("SELECT * FROM silver_common_table", conn)
 
-    df = silver_common_table.copy()
+    total_stories = len(df)
+    context.log.info(f"Analyzing keywords across all {total_stories} cumulative stories from Silver layer...")
 
     # 2. Unpack tokens using helper
     words_series = df["cleaned_tokens"].apply(parse_tokens).explode()
@@ -85,7 +99,7 @@ def top_trending_topics(context: AssetExecutionContext, silver_common_table: Opt
     # 5. Save to DuckDB: data/gold/gold_analytics.duckdb
     # ---------------------------------------------------------
     os.makedirs(os.path.dirname(gold_db_path), exist_ok=True)
-    with duckdb.connect(gold_db_path) as conn:
+    with _connect_duckdb_with_retry(gold_db_path, context) as conn:
         conn.execute("CREATE OR REPLACE TABLE top_trending_topics AS SELECT * FROM gold_df")
 
     context.log.info(f"Saved Top {len(gold_df)} buzzwords into DuckDB: {gold_db_path} ('top_trending_topics').")
@@ -114,25 +128,25 @@ def top_trending_topics(context: AssetExecutionContext, silver_common_table: Opt
 
 @asset(
     group_name="gold",
+    # This guarantees Dagster runs them one-by-one so DuckDB never locks!
+    deps=[silver_common_table, top_trending_topics],
     description="Ranks Hacker News stories by upvote score with standardized timestamps for day/week/month analytical filtering in DuckDB.",
 )
 def trending_stories_by_score(context: AssetExecutionContext, silver_common_table: Optional[pd.DataFrame] = None) -> pd.DataFrame:
     silver_db_path = os.path.join("data", "silver", "hackernews_silver.sqlite")
     gold_db_path = os.path.join("data", "gold", "gold_analytics.duckdb")
 
-    # 1. Fallback: Load from Silver database if DataFrame is not in memory
-    if silver_common_table is None or silver_common_table.empty:
-        if os.path.exists(silver_db_path):
-            context.log.info(f"Loading cleaned stories from Silver database: {silver_db_path}")
-            with sqlite3.connect(silver_db_path) as conn:
-                silver_common_table = pd.read_sql("SELECT * FROM silver_common_table", conn)
-        else:
-            raise ValueError(f"Silver database not found at {silver_db_path}!")
+    # 1. Always load the full cumulative dataset from the Silver database
+    # to rank all historical stories across the entire database, not just the latest run batch.
+    if not os.path.exists(silver_db_path):
+        raise ValueError(f"Silver database not found at {silver_db_path}!")
 
-    total_stories = len(silver_common_table)
-    context.log.info(f"Processing and ranking {total_stories} stories by score...")
+    context.log.info(f"Loading all cumulative stories from Silver database: {silver_db_path}")
+    with sqlite3.connect(silver_db_path) as conn:
+        df = pd.read_sql("SELECT * FROM silver_common_table", conn)
 
-    df = silver_common_table.copy()
+    total_stories = len(df)
+    context.log.info(f"Processing and ranking all {total_stories} cumulative stories by score...")
     if df.empty:
         context.log.warning("No stories available from Silver layer to rank!")
         return pd.DataFrame()
@@ -185,7 +199,7 @@ def trending_stories_by_score(context: AssetExecutionContext, silver_common_tabl
     # 5. Save to DuckDB: data/gold/gold_analytics.duckdb
     # ---------------------------------------------------------
     os.makedirs(os.path.dirname(gold_db_path), exist_ok=True)
-    with duckdb.connect(gold_db_path) as conn:
+    with _connect_duckdb_with_retry(gold_db_path, context) as conn:
         conn.execute("CREATE OR REPLACE TABLE trending_stories_by_score AS SELECT * FROM gold_df")
 
     context.log.info(f"Saved {len(gold_df)} trending stories into DuckDB table 'trending_stories_by_score'.")
