@@ -8,7 +8,7 @@ class HNStoryCleaned(BaseModel):
     title: str
     title_hash: str
     title_cleaned: str
-    cleaned_tokens: str
+    cleaned_tokens: Optional[str] = None
     author: str = "unknown"
     score: int = 0
     url: Optional[str] = ""
@@ -38,4 +38,3 @@ class HNTrendingStoryRanked(BaseModel):
     published_at_dt: Optional[str] = None
     computed_at: str
     dagster_run_id: str
-
